@@ -1,0 +1,362 @@
+---
+title: "Trabalho_7"
+author: "Jose Luiz Neves Voltan"
+date: "22/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1. Aprendemos, atraves de varios exemplos, como podemos explorar o conjunto de dados sobre covid19 disponibilizado pelo Ministerio da Saude. Agora e a sua vez. Nessa atividade, voce devera usar o mesmo banco de dados para avaliar questoes /distintas das que foram propostas na aula. Voce pode usar os dados diretamente da planilha ou atraves de pacotes. Busque analisar outras variaveis, fazer uma analise por regiao, estado. grupo de municıpios, etc. As possibilidades sao imensas e voce devera explora-las. Coloque em pratica todas as ferramentas que aprendemos anteriormente. Quanto maior o numero de elementos utilizados, maior sera a sua nota. Utilize toda a sua criatividade e conhecimento. Bom trabalho!
+
+
+
+```{r}
+# - Importando os pacotes que serão utilizados:
+library(dplyr)     # Manipulação de dados 
+library(tidyr)     # Manipulação de dados
+library(ggplot2)   # Criação de graficos
+library(ggthemes)  # Pacote com temas
+library(patchwork)  #Subplots
+library(scales)     #Escalas nos gráficos
+library(DT)         #Contrução de tabelas
+library(wordcloud)  # Nuvem de palavras
+library(zoo)        # Média Móvel
+```
+
+
+- Os dados utilizados foram obtidos em https://covid.saude.gov.br/, sendo as informações nele contidas apuradas pelas Secretarias Estaduais de Saúde. Os dados estão atualizados até o dia 21 Dezembro 2020
+
+- Para efeitos do trabalho, Brasília será considerada como um município. Essa consideração acontece também pelo próprio Ministério da Saúde em seu dataset. 
+
+- Converti o dataset para UTF-8, uma vez que estava encontrando problemas na acentuação e caracteres especiais. 
+
+- Importando os dados
+
+```{r}
+coronaBR = read.csv2('HIST_PAINEL_COVIDBR_21dez2020.csv',encoding="UTF-8",
+colClasses = c("character", # Regiao
+"character", # Estado
+"character", # Municipio
+"numeric", # coduf
+"numeric", # codmun
+"numeric", # codRegiaoSaude
+"character", # nomeRegiaoSaude
+"Date", # data
+"numeric", # semanaEpi
+"numeric", # populacaoTCU2019
+"numeric", # casosAcumulado
+"numeric", # casosNovos
+"numeric", # obitosAcumulado
+"numeric", # obitosNovos
+"numeric", # Recuperadosnovos
+"numeric", # emAcompanhamentoNovos
+"factor" # interior/metropolitana
+))
+```
+
+- Podemos ter uma visão inicial dos dados:
+
+```{r}
+#View(coronaBR)
+head(coronaBR)
+```
+
+
+
+### Mortalidade nas Capitais brasileiras
+
+- Nossa primeira análise será a mortalidade nas Capitais brasileiras:
+
+```{r}
+capitais = c("Rio Branco", "Maceió", "Macapá", "Manaus", "Salvador",
+"Fortaleza", "Brasília", "Vitória", "Goiânia",
+"São Luís", "Cuiabá", "Campo Grande", "Belo Horizonte", "Belém", "João Pessoa", "Curitiba",
+"Recife", "Teresina","Rio de Janeiro", "Natal",
+"Porto Alegre", "Porto Velho", "Boa Vista", "Florianópolis",
+"São Paulo", "Aracaju", "Palmas"
+)
+
+coronaCapital =filter(coronaBR, coronaBR$municipio %in% capitais)
+#head(coronaCapital)
+
+#Existem alguns nomes de capitais que também são nomes de municípios em outros estados
+# 	Belém	AL  Belém	PB  Boa Vista	PB  	Campo Grande	AL 	Campo Grande	RN  	Palmas	PR 	Rio Branco	MT
+
+coronaCapital<-coronaCapital[!(coronaCapital$municipio == "Belém" & coronaCapital$estado == "AL"),]
+coronaCapital<-coronaCapital[!(coronaCapital$municipio == "Belém" & coronaCapital$estado == "PB"),]
+coronaCapital<-coronaCapital[!(coronaCapital$municipio == "Boa Vista" & coronaCapital$estado == "PB"),]
+coronaCapital<-coronaCapital[!(coronaCapital$municipio == "Campo Grande" & coronaCapital$estado == "AL"),]
+coronaCapital<-coronaCapital[!(coronaCapital$municipio == "Campo Grande" & coronaCapital$estado == "RN"),]
+coronaCapital<-coronaCapital[!(coronaCapital$municipio == "Palmas" & coronaCapital$estado == "PR"),]
+coronaCapital<-coronaCapital[!(coronaCapital$municipio == "Rio Branco" & coronaCapital$estado == "MT"),]
+
+```
+
+
+```{r}
+mortesPorCapital <- coronaCapital %>%
+  select(municipio, obitosNovos,estado) %>%
+  group_by(municipio, estado) %>%
+  summarise(total_obitos = sum(obitosNovos))%>%
+  arrange(desc(total_obitos))
+```
+
+- Construção de uma tabela:
+
+```{r}
+DT::datatable(mortesPorCapital, rownames = FALSE)
+```
+
+- Podemos montar uma **núvem de palavras** usando a quantidade de óbitos (acumulado)
+
+```{r}
+wordcloud(words= mortesPorCapital$municipio, freq=mortesPorCapital$total_obitos, random.order=TRUE, colors=brewer.pal(8,"Dark2"), use.r.layout=TRUE, rot.per=0.5,max.words=50)
+```
+
+- Montando o gráfico:
+
+```{r}
+ggplot(mortesPorCapital, aes(x = estado, y = total_obitos ))+ 
+  geom_bar(stat = "identity", aes(fill = estado))+
+  labs(
+    title = "COVID-19",
+    subtitle = "(Óbitos nas Capitais)",
+    x = "Capitais dos Estados",
+    y = "N° de mortes",
+    face = "bold")+
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)+
+  ggthemes::theme_economist()+
+      scale_colour_hue(name = "Capitais Estaduais")
+  )
+```
+
+- *Do gráfico, podemos observar que São Paulo e Rio de Janeiro são as capitais que mais destoam no total de mortes, com valores próximos aos 15.000 óbitos. Em parte, isso pode ser explicado por possuírem as maiores populações*. Quanto maior a população, maior será o número de contaminados e também de óbitos. Podemos então relacionar a população do município com o total de óbitos.
+
+### Mortalidade nas Capitais brasileiras em relação a população
+
+- **taxa de mortalidade**: impacto de uma doença em relação a a população total de uma região. Podemos fazer o *(número_de_mortes* * *1000) / população_total*, teriamos o número de mortes para cada mil pessoas;
+
+- Para a população, utilizamos a coluna populacaoTCU2019.
+
+```{r}
+mortesPorCapital2 <- coronaCapital %>%
+  select(municipio, obitosNovos,estado,populacaoTCU2019) %>%
+  group_by(municipio, estado,populacaoTCU2019) %>%
+  summarise(total_obitos = sum(obitosNovos))
+```
+
+```{r}
+ mortesPorCapital2 <- mutate(mortesPorCapital2, permil_mortalidade_por_populacao = total_obitos*1000/populacaoTCU2019)%>%
+  arrange(desc(permil_mortalidade_por_populacao))
+```
+
+- Construção de uma tabela:
+
+```{r}
+DT::datatable(mortesPorCapital2, rownames = FALSE)
+```
+
+
+```{r}
+ggplot(mortesPorCapital2, aes(x = estado, y = permil_mortalidade_por_populacao ))+ 
+  geom_bar(stat = "identity", aes(fill = estado))+
+  labs(
+    title = "COVID-19",
+    subtitle = "(Óbitos nas Capitais por mil habitantes)",
+    x = "Capitais dos Estados",
+    y = "N° de mortes",
+    face = "bold")+
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)+
+  ggthemes::theme_economist() +
+      scale_colour_hue(name = "Capitais estaduais")
+  )
+```
+
+- *Agora podemos observar que São Paulo proporcionalmente ao tamanho de sua população não foi a capital com a maior proporção de óbitos. Essa posição ficou com o Rio de Janeiro*. 
+
+
+- Poderíamos observar a relação entre a população e a quantidade de óbitos através de um gráfico de pontos.
+
+```{r}
+ggplot(data = mortesPorCapital2) +
+              geom_point(aes(x =populacaoTCU2019 , y = total_obitos  , colour = municipio))+
+  theme_hc()+
+  theme(legend.position="none")+
+  geom_text(aes(x =populacaoTCU2019 , y = total_obitos , label=estado, colour=municipio), check_overlap = TRUE, vjust=+1, hjust=+0.7)+
+  labs(
+    title = "COVID-19",
+    subtitle = "(Relação entre o número de Óbitos e a quantidade de habitantes)",
+    x = "População",
+    y = "Óbitos",
+    face = "bold")
+```
+
+- Podemos refazer o gráfico anterior removendo São Paulo e Rio de Janeiro, os quais por terem uma população muito superior às demais capitais dificultam uma análise nessas outras.
+
+```{r}
+mortesPorCapital2_sem_sp_rj<-mortesPorCapital2[!(mortesPorCapital2$municipio == "São Paulo" | mortesPorCapital2$municipio == "Rio de Janeiro"),]
+
+ggplot(data = mortesPorCapital2_sem_sp_rj) +
+              geom_point(aes(x =as.numeric(populacaoTCU2019) , y = as.numeric(total_obitos)  , colour = municipio))+
+  theme_hc()+
+  theme(legend.position="none")+
+  geom_text(aes(x =populacaoTCU2019 , y = total_obitos , label=municipio, colour=municipio), check_overlap = TRUE, vjust=-0.4, hjust=+0.7)+
+  labs(
+    title = "COVID-19",
+    subtitle = "(Relação entre o número de Óbitos e a quantidade de habitantes)",
+    x = "População",
+    y = "Óbitos",
+    face = "bold")
+```
+
+- Quanto mais à esquerda, menor a população. 
+
+- Quanto mais para cima, maior a quantidade de óbitos. 
+
+- Municípios que aparecem no canto inferior direito possuem uma maior população e um menor número de óbitos. 
+
+- Por exemplo, Curitiba e Belo Horizonte possuem aproximadamente a mesma quantidade de óbitos. Porém, Belo Horizonte é mais populoso. 
+
+
+
+### COVID-19 nas 5 Capitais brasileiras mais populosas
+
+```{r}
+mortes_top_5_pop <- coronaCapital %>%
+  select(municipio, obitosNovos,estado,populacaoTCU2019) %>%
+  group_by(municipio, estado,populacaoTCU2019) %>%
+  summarise(total_obitos = sum(obitosNovos)) %>%
+  arrange(desc(populacaoTCU2019))
+```
+
+- Encontrando as 5 capitais brasileiras mais populosas:
+
+```{r}
+top_5_capitais <- mortes_top_5_pop[1:5,]
+top_5_capitais$municipio
+```
+```{r}
+capitais_top_5 = c("São Paulo","Rio de Janeiro","Brasília","Salvador","Fortaleza")
+corona_top_5 =filter(coronaBR, coronaBR$municipio %in% capitais_top_5)
+```
+
+- Iremos montar um gráfico para cada uma das *5 capitais* mais populosas, mostrando o total de casos acumulados e o total de mortes acumuladas:
+
+```{r}
+totalObitos <- ggplot(corona_top_5, aes(data, obitosAcumulado,group=municipio,colour=municipio)) +
+  geom_line()+
+  labs(
+    x = "2020",
+    y = "Óbitos Acumulados"
+    )+
+theme_classic()+
+  scale_colour_hue(name = "Municípios")
+
+totalCasos <- ggplot(corona_top_5, aes(data, casosAcumulado,group=municipio,colour=municipio)) +
+  geom_line()+
+  labs(
+    x = "2020",
+    y = "Casos Acumulados"
+    )+
+theme_classic()+
+  theme(legend.position="none")
+
+```
+
+```{r}
+totalCasos + totalObitos
+```
+
+### Média móvel nas 5 Capitais mais populosas
+
+- Muito tem-se falado em uma segunda onda do COVID-19, utilizaremos a média móvel para analisar os índices atuais.
+
+
+```{r}
+#Uso do pacote zoo e a função rollmean() 
+obito_movel=corona_top_5 %>%
+      group_by(municipio) %>%
+      mutate(media_movel_7 = zoo::rollmean(obitosNovos, k = 7, fill = NA,align = 'right')) #right: pegar ultimos 7 dias
+
+obito_movel_limpo <- subset(obito_movel, !is.na(media_movel_7))
+```
+
+- Podemos analisar a quantidade de **novos Óbitos**:
+
+```{r}
+g_obitos_media_7 = ggplot(data=obito_movel_limpo) +
+  geom_line(mapping=aes(x = data, y = media_movel_7,group=municipio,colour=municipio))+
+  labs(title = "Óbitos 5 Capitais mais populosas",
+  subtitle = "Covid19 - média móvel - 7 dias",
+  y = "Novos Óbitos",
+  x = "Evolução temporal em 2020")+
+  scale_colour_hue(name = "Municípios")
+g_obitos_media_7
+```
+
+- O Brasil é um país muito grande, com uma grande diversidade. Por isso, é normal de se observar tendências diferentes. Enquanto algumas capitais parecem estar estáveis, como Brasília, outras como Salvador, vivenciam uma redução. Outras, como Rio e São Paulo, vivenciam um aumento, mas ainda não no mesmo nível que junho e julho. 
+
+- Podemos analisar agora a quantidade de **novos casos**:
+
+```{r}
+novos_casos_movel=corona_top_5 %>%
+      group_by(municipio) %>%
+      mutate(media_movel_7 = zoo::rollmean(casosNovos, k = 7, fill = NA,align = 'right')) #right: pegar ultimos 7 dias
+
+novos_casos_movel_limpo <- subset(novos_casos_movel, !is.na(media_movel_7))
+```
+
+```{r}
+g_casos_media_7 = ggplot(data=novos_casos_movel_limpo) +
+  geom_line(mapping=aes(x = data, y = media_movel_7,group=municipio,colour=municipio))+
+  labs(title = "Óbitos 5 Capitais mais populosas",
+  subtitle = "Covid19 - média móvel - 7 dias",
+  y = "Novos casos",
+  x = "Evolução temporal em 2020")+
+  scale_colour_hue(name = "Municípios")
+g_casos_media_7
+```
+
+- As considerações sobre a diversidade brasileira se repetem aqui. 
+
+
+- **taxa de letalidade** : podemos considerar  o valor de novos óbitos em relação aos novos casos. Essa informação é importante para sabermos o quanto letal a doença está ao longo do tempo, em relação aos infectados. Se com o passar do tempo, ocorreram evoluções no tratamento que diminuiram a letalidade ou mesmo se variações do vírus o tornaram mais letal. 
+
+
+- Para o cálculo da mortalidade faremos a média móvel dos novos óbitos vezes 100, dividido pela média móvel dos novos casos.
+
+```{r}
+mortalidade_casos_movel=corona_top_5 %>%
+      group_by(municipio) %>%
+      mutate(media_movel_novos = zoo::rollmean(casosNovos, k = 7, fill = NA,align = 'right')) %>% #right: pegar ultimos 7 dias
+      mutate(media_movel_7_obito = zoo::rollmean(obitosNovos, k = 7, fill = NA,align = 'right'))%>%
+      mutate(mortalidade = media_movel_7_obito*100/media_movel_novos)
+      
+mortalidade_movel_limpo <- subset(mortalidade_casos_movel, !is.na(mortalidade))
+```
+
+```{r}
+g_casos_media_7 = ggplot(data=mortalidade_movel_limpo) +
+  geom_line(mapping=aes(x = data, y = mortalidade,group=municipio,colour=municipio))+
+  labs(title = "Óbitos 5 Capitais mais populosas",
+  subtitle = "Covid19 - média móvel - 7 dias",
+  y = "Taxa de Letalidade",
+  x = "Evolução temporal em 2020")+
+  scale_colour_hue(name = "Municípios")
+g_casos_media_7
+```
+
+
+- Algumas considerações importantes: quando uma pessoa contrai o Novo Coronavírus, ela pode demorar um tempo para evoluir para um óbito. Esse tempo de evolução, depende muito das condições atuais de saúde do paciente, mas também das condições hospitalares. Basta pensar que um paciente em estado crítico, pode sobreviver se encontrar uma vaga em uma Unidade de Terapia Intensiva e lhe for oferecido o suporte a vida adequado. Por outro lado, esse mesmo paciente, sem uma vaga em uma UTI/CTI evoluiria para um óbito.  
+
+
+- O Município do Rio de Janeiro aparece com uma elevada taxa de óbito em relação aos casos de covid (elevada taxa de letalidade). Atualmente, Brasília e Salvador possuem as menores taxas de letalidade. 
+
+
