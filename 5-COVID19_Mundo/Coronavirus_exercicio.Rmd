@@ -1,0 +1,517 @@
+---
+title: "Coronavirus_exercicio"
+author: "Jose Luiz Neves Voltan"
+date: "23/11/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Atividade: Análise de Dados do Coronavírus no Mundo
+
+### Carregando as Biliotecas
+
+```{r}
+library(ggplot2)
+library(patchwork)
+library(lubridate)
+library(zoo)
+library(dplyr)
+library(coronavirus)
+#update_dataset()  DataSet atualizado em 24/11/2020
+```
+
+#### Observando o conjunto de dados
+
+- O Dataset foi atualizado em 24 de novembro de 2020.
+
+```{r}
+data(coronavirus)
+head(coronavirus)
+tail(coronavirus)
+```
+
+### **1- Agrupando os dados (Casos de Todos os tipos) por país**
+
+- Temos o país e as 3 possíveis situações: **confirmado, recuperado e óbito**, além da latitude  e longitude do país. 
+
+```{r}
+total_mundo <- coronavirus %>%
+  group_by(country,lat,long, type) %>%
+  summarise(total_casos = sum(cases))%>%
+  arrange(country)
+
+total_mundo 
+```
+
+### **2- O COVID pelo mundo, separado por tipo de caso confirmado, recuperado e óbito**
+
+- Aplicando filtros, teremos 3 subconjuntos (dataframes), cada um referente a um tipo de caso: **confirmado, recuperado e óbito**.
+
+```{r}
+total_mundo_confirmados  <- coronavirus %>%
+  filter(type == "confirmed") %>%
+  group_by(country, lat, long) %>%
+  summarise(total_cases = sum(cases)) 
+total_mundo_confirmados
+
+total_mundo_obitos  <- coronavirus %>%
+  filter(type == "death") %>%
+  group_by(country, lat, long) %>%
+  summarise(total_cases = sum(cases))
+
+total_mundo_recuperados  <- coronavirus %>%
+  filter(type == "recovered") %>%
+  group_by(country, lat, long) %>%
+  summarise(total_cases = sum(cases))
+
+
+```
+
+- Os valores para cada tipo de caso, de cada país, serão plotados no mapa Mundo, usando a latitude e longitude. Para isso inicialmente faremos a manipulação do Mapa, corrigindo o nome de alguns países que se encontram diferentes na base do mapa e na base do pacote COVID.
+
+```{r}
+library(maps)
+library(stringr)
+world <- map_data("world")
+#world
+
+#Temos de combinar alguns nomes da estatística com o mapa, para isso fiz alguns testes e deixei comentado
+#verificando os paises que estão na base do covid mas não estão no mapa
+#total_mundo_recuperados$country[!total_mundo_recuperados$country %in% world$region]
+
+#Me retornou a lista, o difícil é descobrir como o país aparece na outra base
+#world$region[world$region=="USA"]
+#total_mundo_recuperados$country[total_mundo_recuperados$country=="United Kingdom"]
+#world$region[world$region=="Taiwan"]
+#world$region[world$region=="South Korea"]
+#world$region[world$region=="Democratic Republic of the Congo"]
+#world$region[str_detect(world$region,"Congo")]
+
+#Consertando os principais países:
+world <- mutate(world, region = replace(region, region=="USA", "US"))
+world <- mutate(world, region = replace(region, region=="UK", "United Kingdom"))
+world <- mutate(world, region = replace(region, region=="Taiwan", "Taiwan*"))
+world <- mutate(world, region = replace(region, region=="South Korea", "Korea, South"))
+world <- mutate(world, region = replace(region, region=="Democratic Republic of the Congo", "Congo (Kinshasa)"))
+world <- mutate(world, region = replace(region, region=="Republic of Congo","Congo (Brazzaville)"))
+```
+
+- Gerando o Mapa **Casos de pessoas recuperadas por COVID**
+
+```{r}
+g_rec <- ggplot() +
+  geom_map(data = world,
+           map = world,
+           aes(x = long, y = lat, map_id = region),
+           fill="#ffffff", color="#ffffff", size=0.20) +
+  geom_map(data = total_mundo_confirmados, 
+           map = world,
+           aes(fill = total_cases,map_id = country, x = long, y = lat),
+           color="#ffffff", size=0.15) +
+  scale_fill_continuous(low = 'lightcyan2', high = 'midnightblue') +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank())+
+  ggtitle("Casos de pessoas recuperadas por COVID") 
+```
+
+- Gerando o Mapa **Casos de Óbito por COVID**
+
+```{r}
+g_obito <- ggplot() +
+  geom_map(data = world,
+           map = world,
+           aes(x = long, y = lat, map_id = region),
+           fill="#ffffff", color="#ffffff", size=0.20) +
+  geom_map(data = total_mundo_obitos, 
+           map = world,
+           aes(fill = total_cases,map_id = country, x = long, y = lat),
+           color="#ffffff", size=0.15) +
+  scale_fill_continuous(low = 'lightcyan2', high = 'firebrick') +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank())+
+  ggtitle("Casos de Óbito por COVID") 
+```
+
+- Gerando o Mapa **Casos confirmados de COVID**
+
+```{r}
+g_conf <- ggplot() +
+  geom_map(data = world,
+           map = world,
+           aes(x = long, y = lat, map_id = region),
+           fill="#ffffff", color="#ffffff", size=0.20) +
+  geom_map(data = total_mundo_confirmados, 
+           map = world,
+           aes(fill = total_cases,map_id = country, x = long, y = lat),
+           color="#ffffff", size=0.15) +
+  scale_fill_continuous(low = 'lightcyan2', high = 'firebrick') +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank())+
+  ggtitle("Casos confirmados de COVID") 
+```
+- Plotando os Gráficos do tipo Mapa gerados:
+
+```{r}
+g_conf
+
+g_rec
+
+g_obito
+```
+
+
+
+
+### **3- Análise dos 5 paises com mais casos, onde iremos explorar as 3 possíveis situações (Confirmado, Recuperado e óbito)**
+
+- Descobrindo o **Top 5** dos países com mais casos **confirmados**
+
+```{r}
+total_mundo_5 <- coronavirus %>%
+  filter(type=='confirmed') %>%
+  group_by(country) %>%
+  summarise(total_casos = sum(cases))%>%
+  arrange(-total_casos)
+
+total_mundo_5[1:5,1] 
+```
+
+- Temos o país, as 3 possíveis situações: **confirmado, recuperado e óbito** e o total de casos. 
+
+```{r}
+total_3situacoes_5 <- coronavirus %>%
+  filter(country %in% c('US','India','Brazil','France','Russia')) %>%
+  group_by(country, type) %>%
+  summarise(total_casos = sum(cases))%>%
+  arrange(country)
+
+total_3situacoes_5 
+```
+
+#### **A proporção de recuperação, mortes e confirmações de COVID**
+
+- Explorando em um gráfico de barras as 3 situações por país
+
+```{r}
+g1 <- ggplot(total_3situacoes_5, aes(y = total_casos, x = country, fill = type)) +
+  geom_bar(stat = "identity", position='dodge')+
+  labs(title = expression (paste(bold('A proporção de recuperação, mortes e confirmações de COVID'))),
+  y = 'Quantidade de pessoas',
+  x = ' Top 5 dos Países com mais casos confirmados')+
+  theme(legend.position = "top")
+
+g1
+```
+
+#### **Total de casos de óbito por COVID**
+- Observando apenas os casos de óbito em um gráfico de barras do top 5 de casos confirmados.
+
+```{r}
+
+total_3situacoes_5_obito<-  filter(total_3situacoes_5, type == "death") 
+
+#total_3situacoes_5_obito
+
+g1 <- ggplot(total_3situacoes_5_obito, aes(y = total_casos, x = country, fill=country )) +
+  geom_bar(stat = "identity", position='dodge')+
+  labs(title = expression (paste(bold('Total de casos de óbito por COVID'))),
+  y = 'Quantidade de óbitos',
+  x = ' Top 5 dos Países com mais casos confirmados')+
+  theme(legend.position = "top")
+
+g1
+```
+
+### **4- Evolução de casos dos 5 paises com mais casos**
+
+
+- Com esse tipo de gráfico fica mais fácil perceber fenômenos como  a 2ª onda, como é o caso de Rússia, França e USA.
+- A análise se baseou nos total mensal. A depender da janela temporal adotada, outros países poderiam estar na 2ª onda.
+
+- Criando a coluna mês para o dataframe
+
+```{r}
+Top_5 = coronavirus %>% 
+  filter(country %in% c('US','India','Brazil','France','Russia'))%>%
+  mutate(mes = format(date, '%m')) %>%
+  group_by(type, country, mes) %>%
+  summarise(total_casos = sum(cases))%>%
+  arrange(country)
+Top_5  
+```
+
+
+
+- Gerando o gráfico com escala livre, com o número de casos agrupados por mês 
+```{r}
+ggplot(Top_5) +
+  geom_line(aes(x=mes, y=total_casos, group=type, colour=type)) + 
+  facet_wrap(~country, ncol=2, scales="free_y") +
+  theme(axis.text.x = element_text(angle = 90))+
+  scale_y_continuous(n.breaks = 5)+
+  labs(x = "Mês", y = "Quantidade de casos") +
+  theme(axis.title = element_text(size=10), plot.title = element_text(size=12, face="bold")) +
+  ggtitle("Evolução ao longo do tempo do Top 5 de casos confirmados")
+```
+
+### **5- Proporção entre quantidade de óbitos e casos confirmados nos 5 paises com mais casos confirmados**
+
+- Isso seria útil para sabermos os locais em que o vírus mais está matando as pessoas infectadas, 
+
+- Vale notar que pode haver distorções, como por exemplo, países ricos que testam mais e em consequência tem mais casos confirmados. Ao fazer a divisão de mortes por confirmados, como o país testa mais, o denominador fica maior, e em consequência o resultado da divisão menor, fazendo parecer que o vírus é menos mortal nesses países do que em países que testam mais. Países mais pobres tendem a apresentar subnotificações e só testar pessoas em casos críticos, assim, o resultado da divisão tende a ser maior do que em países ricos.
+
+- Pivotando o dataframe
+```{r}
+#install.packages('reshape')
+library(reshape)
+
+# Primeiro iremos pivotar o Data Frame
+#total_3situacoes_5
+total_classe <- cast(total_3situacoes_5, country ~ type, value = 'total_casos' )
+total_classe
+```
+
+#### **Total de casos notificados x Óbitos**
+- Gerando o gráfico
+
+```{r}
+g8 <- ggplot(total_classe) +
+  geom_point(aes(x = confirmed, y = death ,color = country),stroke=1.5, size=4) +
+   geom_smooth(aes(x = confirmed, y = death), se = FALSE, formula = y ~ x,method = "lm", fullrange=TRUE)+
+  labs(title = 'Total de casos notificados x Óbitos',
+  y = 'Óbitos',
+  x = 'Total de casos confirmados de COVID')
+
+g8 
+```
+
+- A linha azul traça uma relação do tipo y ~ x entre os casos confirmados de COVID e o total de óbitos
+
+- SObre o que foi abordado sobre a testagem, por exemplo, se o Brasil fizesse mais testes na população sem investir na recuperação e melhora dos pacientes, seu ponto se deslocaria na horizontal para a direita, dando a impressão de que o vírus é menos letal.
+
+
+
+- Índice de mortes em relação aos casos confirmados (morte/confirmado), onde 1 representaria uma doença com 100% de letalidade
+
+```{r}
+total_classe <- mutate(total_classe, proporcao_obitos = death/confirmed) %>%
+  arrange(-proporcao_obitos)
+total_classe 
+```
+
+#### **A proporção de mortes em relação aos casos confirmados de COVID**
+```{r}
+g1 <- ggplot(total_classe, aes(y = proporcao_obitos, x = country, fill= country) ) +
+  geom_bar(stat = "identity")+
+  labs(title = expression (paste(bold('A proporção de mortes em relação aos casos confirmados de COVID'))),
+  y = 'Mortalidade me relação aos casos confirmados',
+  x = ' Top 5 dos Países com mais casos confirmados')+
+  theme(legend.position = "top")
+
+g1
+```
+
+### **6- Análise dos últimos 45 dias nos países Top 5 de casos confirmado**
+
+- Até então estavamos acompanhando os casos totais, a presente parte da análise focará nos últimos 45 dias. Isso permitirá verificar mudanças de comportamento recentes na proliferação do vírus.
+
+- Observe que apesar do dataset ter sido atualizado em 24 NOV 20, os últimos registros são de 22 NOV 20. Por isso, os 45 dias compreendem o período de **08 OUT a 22 NOV de 2020**
+
+```{r}
+Top_5_45_dias = coronavirus %>% 
+  filter(country %in% c('US','India','Brazil','France','Russia'))%>%
+  filter(date>"2020-10-08")%>%
+  group_by(type, country) %>%
+  summarise(total_casos = sum(cases))%>%
+  arrange(country)
+#Top_5_45_dias  
+```
+
+#### **Os últimos 45 dias - A proporção de recuperação, mortes e confirmações de COVID**
+- Explorando em um gráfico de barras as 3 situações por país
+
+```{r}
+g45 <- ggplot(Top_5_45_dias, aes(y = total_casos, x = country, fill = type)) +
+  geom_bar(stat = "identity", position='dodge')+
+  labs(title = expression (paste(bold('Os últimos 45 dias - A proporção de recuperação, mortes e confirmações de COVID'))),
+  y = 'Quantidade de pessoas',
+  x = 'Top 5 dos Países com mais casos confirmados')+
+  theme(legend.position = "top")
+
+g45
+```
+
+#### **Os últimos 45 dias - Total de casos de óbito por COVID**
+
+- Observando apenas os casos de óbito dos últimos 45 dias em um gráfico de barras do top 5 de casos confirmados.
+
+```{r}
+
+Top_5_45_dias_obito<-  filter(Top_5_45_dias, type == "death") 
+
+
+g45_2 <- ggplot(Top_5_45_dias_obito, aes(y = total_casos, x = country, fill=country )) +
+  geom_bar(stat = "identity", position='dodge')+
+  labs(title = expression (paste(bold('Últimos 45 dias - Total de casos de óbito por COVID'))),
+  y = 'Quantidade de óbitos',
+  x = ' Top 5 dos Países com mais casos confirmados')+
+  theme(legend.position = "top")
+
+g45_2
+```
+- Observa-se que o Brasil perdeu a colocação de país com mais casos de morte para os estados Unidos.
+
+#### Evolução ao longo dos últimos 45 dias do Top 5 de casos confirmados
+
+- Gerando o dataframe:
+```{r}
+Top_5_45_dias_data = coronavirus %>% 
+  filter(country %in% c('US','India','Brazil','France','Russia'))%>%
+  filter(date>"2020-10-08")%>%
+  group_by(type, country, date) %>%
+  summarise(total_casos = sum(cases))%>%
+  arrange(country)
+#Top_5_45_dias_data  
+```
+
+#### **Evolução ao longo dos últimos 45 dias do Top 5 de casos confirmados**
+
+-Plotando o gráfico:
+
+```{r}
+ggplot(Top_5_45_dias_data) +
+  geom_line(aes(x=date, y=total_casos, group=type, colour=type)) + 
+  facet_wrap(~country, ncol=2, scales="free_y") +
+  theme(axis.text.x = element_text(angle = 90))+
+  scale_y_continuous(n.breaks = 5)+
+  labs(x = "Tempo", y = "Quantidade de casos") +
+  theme(axis.title = element_text(size=10), plot.title = element_text(size=12, face="bold")) +
+  ggtitle("Evolução ao longo dos últimos 45 dias do Top 5 de casos confirmados")
+```
+
+- Pivotando o dataframe
+```{r}
+#install.packages('reshape')
+library(reshape)
+
+# Primeiro iremos pivotar o Data Frame
+#total_3situacoes_5
+total_classe_45 <- cast(Top_5_45_dias, country ~ type, value = 'total_casos' )
+total_classe_45
+```
+
+#### **Os últimos 45 dias - Total de casos notificados x Óbitos**
+
+- Gerando o gráfico
+
+```{r}
+g8 <- ggplot(total_classe_45) +
+  geom_point(aes(x = confirmed, y = death ,color = country),stroke=1.5, size=4) +
+   geom_smooth(aes(x = confirmed, y = death), se = FALSE, formula = y ~ x,method = "lm", fullrange=TRUE)+
+  labs(title = 'Os últimos 45 dias - Total de casos notificados x Óbitos',
+  y = 'Óbitos',
+  x = 'Total de casos confirmados de COVID')
+
+g8 
+```
+
+
+
+### **7- A 2ª Onda de infecções**
+
+- Agrupando o conjunto de dados pelo tempo
+
+```{r}
+total_mundo_tempo <- coronavirus %>%
+  group_by(date,type) %>%
+  summarise(total_casos = sum(cases))%>%
+  arrange(date)
+
+#total_mundo_tempo 
+```
+#### **Evolução ao longo do tempo dos casos de COVID pelo mundo**
+
+```{r}
+ggplot(total_mundo_tempo) +
+  geom_line(aes(x=date, y=total_casos, group=type, colour=type)) + 
+  theme(axis.text.x = element_text(angle = 90))+
+  scale_y_continuous(n.breaks = 10)+
+  labs(x = "Evolução Temporal", y = "Quantidade de casos") +
+  theme(axis.title = element_text(size=10), plot.title = element_text(size=12, face="bold")) +
+  ggtitle("Evolução ao longo do tempo dos casos de COVID pelo mundo")
+```
+
+- A análise pode ser feita com base nos casos mensais e não diários:
+```{r}
+total_mundo_mensal <- coronavirus %>%
+  mutate(mes = format(date, '%m')) %>%
+  group_by(mes,type) %>%
+  summarise(total_casos = sum(cases))%>%
+  arrange(mes)
+
+#total_mundo_mensal 
+```
+
+#### **Evolução mensal dos casos de COVID pelo mundo**
+
+```{r}
+ggplot(total_mundo_mensal) +
+  geom_line(aes(x=mes, y=total_casos, group=type, colour=type)) + 
+  theme(axis.text.x = element_text(angle = 90))+
+  scale_y_continuous(n.breaks = 10)+
+  labs(x = "Evolução Mensal", y = "Quantidade de casos") +
+  theme(axis.title = element_text(size=10), plot.title = element_text(size=12, face="bold")) +
+  ggtitle("Evolução mensal dos casos de COVID pelo mundo")
+```
+
+
+- Observando apenas a evolução das mortes ao longo do tempo
+
+```{r}
+total_mundo_tempo_mortes <- filter(total_mundo_tempo,type=='death' )
+
+#total_mundo_tempo_mortes 
+```
+
+#### **Evolução temporal dos casos de óbito por COVID**
+
+```{r}
+ggplot(total_mundo_tempo_mortes) +
+  geom_line(aes(x=date, y=total_casos)) + 
+  theme(axis.text.x = element_text(angle = 90))+
+  scale_y_continuous(n.breaks = 10)+
+  labs(x = "Evolução Temporal", y = "Quantidade de casos") +
+  theme(axis.title = element_text(size=10), plot.title = element_text(size=12, face="bold")) +
+  ggtitle("Evolução temporal dos casos de óbito por COVID")
+```
+
+- Analisando as mortes mensais
+Gerando o dataframe
+```{r}
+total_mundo_mortes_mensal <- filter(total_mundo_mensal,type=='death')
+#total_mundo_mortes_mensal
+```
+#### **Evolução mensal dos casos de óbito por COVID ao redor do mundo**
+
+Plotando o gráfico:
+
+```{r}
+ggplot(total_mundo_mortes_mensal) +
+  geom_line(aes(x=mes, y=total_casos, group=type, colour=type)) + 
+  theme(axis.text.x = element_text(angle = 90))+
+  scale_y_continuous(n.breaks = 10)+
+  labs(x = "Evolução Mensal", y = "Quantidade de casos") +
+  theme(axis.title = element_text(size=10), plot.title = element_text(size=12, face="bold")) +
+  ggtitle("Evolução mensal dos casos de óbito por COVID ao redor do mundo")
+```
+
+
+- Nota-se que em **ABRIL** a doença atingiu um número elevado de mortes, que diminuiu em **JUNHO**, voltando a crescer até **AGOSTO**, reduzindo em **SETEMBRO**, e mantendo uma tendência de crescimento desde então. Nota-se que os valores de óbito atuais, são próximos ao pico de **ABRIL**.
